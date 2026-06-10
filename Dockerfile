@@ -14,6 +14,6 @@ COPY . .
 
 EXPOSE 8080
 
-# Use sh -c so $PORT is expanded at runtime
-CMD ["sh", "-c", "gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 1 --timeout 300"]
+# gunicorn.conf.py reads PORT from environment using Python — no shell expansion issues
+CMD ["gunicorn", "app:app", "-c", "gunicorn.conf.py"]
 
