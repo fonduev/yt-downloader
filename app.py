@@ -44,6 +44,23 @@ if FFMPEG_LOCATION and FFMPEG_LOCATION not in os.environ.get('PATH', ''):
     os.environ['PATH'] = FFMPEG_LOCATION + os.pathsep + os.environ.get('PATH', '')
 
 
+# ── YouTube cookies (bypass PO Token block on cloud IPs) ─────────
+# Set YOUTUBE_COOKIES env var in Railway with the contents of cookies.txt
+YOUTUBE_COOKIE_FILE = None
+_raw_cookies = os.environ.get('YOUTUBE_COOKIES', '').strip()
+if _raw_cookies:
+    import tempfile as _tf
+    _cf = _tf.NamedTemporaryFile(mode='w', suffix='.txt',
+                                  prefix='yt_cookies_', delete=False)
+    _cf.write(_raw_cookies)
+    _cf.flush()
+    _cf.close()
+    YOUTUBE_COOKIE_FILE = _cf.name
+    print(f"  [cookies] YouTube cookies cargadas desde variable de entorno")
+else:
+    print("  [cookies] No hay cookies configuradas (usando cliente tv_embedded)")
+
+
 # ── Shared helpers ───────────────────────────────────────────────
 def get_id():
     import uuid
@@ -91,6 +108,13 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
             ),
         },
     }
+    # Use cookies if available (overrides PO Token requirement)
+    if YOUTUBE_COOKIE_FILE:
+        common['cookiefile'] = YOUTUBE_COOKIE_FILE
+        # With cookies, use standard web client for best quality
+        common['extractor_args'] = {
+            'youtube': {'player_client': ['web', 'android']}
+        }
 
 
     if fmt == 'mp3':
