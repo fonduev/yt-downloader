@@ -250,6 +250,10 @@ def prepare_download():
 
         for url in urls:
             try:
+                # Resolve ytsearch: URLs via Invidious to bypass YouTube bot block
+                if url.startswith('ytsearch'):
+                    query = url.split(':', 1)[1]
+                    url = _resolve_via_invidious(query)
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     ydl.download([url])
                 with prepare_lock:
