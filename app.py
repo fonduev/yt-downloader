@@ -80,25 +80,36 @@ _INVIDIOUS_INSTANCES = [
 ]
 
 def _resolve_via_invidious(query: str) -> str:
-    """Search Invidious for query → return Invidious watch URL (or ytsearch fallback)."""
+    """Search Invidious in PARALLEL across all instances → return first working URL."""
     import urllib.request as _ureq2, json as _json2
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     encoded = urllib.parse.quote(query)
-    for instance in _INVIDIOUS_INSTANCES:
+
+    def _try(instance):
         try:
             api = f"{instance}/api/v1/search?q={encoded}&type=video&page=1"
             req = _ureq2.Request(api, headers={'User-Agent': 'Mozilla/5.0'})
-            with _ureq2.urlopen(req, timeout=8) as r:
+            with _ureq2.urlopen(req, timeout=5) as r:
                 results = _json2.loads(r.read().decode('utf-8'))
             if isinstance(results, list) and results:
                 vid = results[0].get('videoId', '')
                 if vid:
-                    print(f"  [invidious] {query[:40]} → {instance}/watch?v={vid}")
                     return f"{instance}/watch?v={vid}"
-        except Exception as ex:
-            print(f"  [invidious] {instance} falló: {ex}")
-            continue
-    # All Invidious instances failed — fallback to yt-dlp search
-    print(f"  [invidious] Todos fallaron, usando ytsearch: {query[:40]}")
+        except Exception:
+            pass
+        return None
+
+    # Query all instances at once — return first success
+    with ThreadPoolExecutor(max_workers=len(_INVIDIOUS_INSTANCES)) as ex:
+        futures = {ex.submit(_try, inst): inst for inst in _INVIDIOUS_INSTANCES}
+        for fut in as_completed(futures, timeout=10):
+            result = fut.result()
+            if result:
+                print(f"  [invidious] ✓ {result[:60]}")
+                return result
+
+    print(f"  [invidious] Todos fallaron → ytsearch fallback")
     return f'ytsearch1:{query}'
 
 
