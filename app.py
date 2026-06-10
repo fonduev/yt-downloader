@@ -744,9 +744,8 @@ def get_album_tracks():
             track_num   = item.get('trackNumber', len(tracks) + 1)
             duration_ms = item.get('trackTimeMillis', 0) or 0
 
-            # Use Invidious to resolve the video URL (bypasses YouTube bot block on Railway)
-            # Falls back to ytsearch1: if all Invidious instances fail
-            yt_url = _resolve_via_invidious(f'{artist} {track_name}')
+            # Store search query — resolution via Invidious happens at download time
+            yt_url = f'ytsearch1:{artist} {track_name}'
 
             tracks.append({
                 'number':      track_num,
