@@ -68,8 +68,7 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
     """Return yt-dlp options dict."""
     hooks = [progress_hook] if progress_hook else []
 
-    # ── Anti-bot settings for cloud servers ──────────────────────
-    # Use Android/iOS YouTube client to avoid bot detection on cloud IPs
+    # ── Anti-bot + reliability settings for cloud servers ────────
     common = {
         'outtmpl':          os.path.join(out_dir, '%(title)s.%(ext)s'),
         'progress_hooks':   hooks,
@@ -92,16 +91,14 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
     }
 
     if fmt == 'mp3':
-        postprocessors = [
-            {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': str(audio_quality)},
-            {'key': 'EmbedThumbnail'},
-            {'key': 'FFmpegMetadata', 'add_metadata': True},
-        ]
         opts = {
             **common,
-            'format':          'bestaudio/best',
-            'postprocessors':  postprocessors,
-            'writethumbnail':  True,
+            'format': 'bestaudio/best',
+            'postprocessors': [
+                {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3',
+                 'preferredquality': str(audio_quality)},
+                {'key': 'FFmpegMetadata', 'add_metadata': True},
+            ],
         }
     else:
         if quality == 'best' or not quality:
@@ -122,10 +119,10 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
     return opts
 
 
-
 # ════════════════════════════════════════════════════════════════
 #  BROWSER DOWNLOAD  (prepare → serve to browser)
 # ════════════════════════════════════════════════════════════════
+
 
 
 prepare_jobs = {}
