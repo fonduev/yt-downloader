@@ -73,7 +73,7 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
             {'key': 'EmbedThumbnail'},
             {'key': 'FFmpegMetadata', 'add_metadata': True},
         ]
-    opts = {
+        opts = {
             'format': 'bestaudio/best',
             'postprocessors': postprocessors,
             'writethumbnail': True,
@@ -81,7 +81,6 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
             'progress_hooks': hooks,
             'quiet': False,
             'no_warnings': False,
-            'verbose': False,
         }
     else:
         if quality == 'best' or not quality:
@@ -108,6 +107,7 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
 # ════════════════════════════════════════════════════════════════
 #  BROWSER DOWNLOAD  (prepare → serve to browser)
 # ════════════════════════════════════════════════════════════════
+
 
 prepare_jobs = {}
 prepare_lock = threading.Lock()
