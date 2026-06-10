@@ -73,13 +73,15 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
             {'key': 'EmbedThumbnail'},
             {'key': 'FFmpegMetadata', 'add_metadata': True},
         ]
-        opts = {
+    opts = {
             'format': 'bestaudio/best',
             'postprocessors': postprocessors,
             'writethumbnail': True,
             'outtmpl': os.path.join(out_dir, '%(title)s.%(ext)s'),
             'progress_hooks': hooks,
-            'quiet': True, 'no_warnings': True,
+            'quiet': False,
+            'no_warnings': False,
+            'verbose': False,
         }
     else:
         if quality == 'best' or not quality:
@@ -95,7 +97,8 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
             'postprocessors': [{'key': 'FFmpegMetadata', 'add_metadata': True}],
             'outtmpl': os.path.join(out_dir, '%(title)s.%(ext)s'),
             'progress_hooks': hooks,
-            'quiet': True, 'no_warnings': True,
+            'quiet': False,
+            'no_warnings': False,
         }
     if FFMPEG_LOCATION:
         opts['ffmpeg_location'] = FFMPEG_LOCATION
@@ -195,7 +198,8 @@ def prepare_download():
             with prepare_lock:
                 if token in prepare_jobs:
                     prepare_jobs[token]['status'] = 'error'
-                    prepare_jobs[token]['error']  = 'No se pudo descargar el archivo'
+                    last_err = prepare_jobs[token].get('error') or 'No se encontraron archivos'
+                    prepare_jobs[token]['error'] = f'Error al descargar: {last_err}'
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
 
