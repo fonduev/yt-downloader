@@ -69,6 +69,7 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
     hooks = [progress_hook] if progress_hook else []
 
     # ── Anti-bot + reliability settings for cloud servers ────────
+    # tv_embedded bypasses YouTube PO Token requirement on server IPs (2024+)
     common = {
         'outtmpl':          os.path.join(out_dir, '%(title)s.%(ext)s'),
         'progress_hooks':   hooks,
@@ -78,17 +79,19 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
         'fragment_retries': 5,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios', 'web'],
+                'player_client': ['tv_embedded', 'android_vr', 'web_creator'],
+                'player_skip':   ['webpage', 'configs'],
             }
         },
         'http_headers': {
             'User-Agent': (
-                'Mozilla/5.0 (Linux; Android 12; Pixel 6) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/112.0.0.0 Mobile Safari/537.36'
+                'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) '
+                'AppleWebKit/538.1 (KHTML, like Gecko) '
+                'Version/6.0 TV Safari/538.1'
             ),
         },
     }
+
 
     if fmt == 'mp3':
         opts = {
