@@ -40,3 +40,7 @@ desktop.ini
 
 # Logs
 *.log
+
+# YouTube cookies (NEVER commit these to git)
+*cookies*.txt
+RAILWAY_COOKIES_VALUE.txt

@@ -45,20 +45,25 @@ if FFMPEG_LOCATION and FFMPEG_LOCATION not in os.environ.get('PATH', ''):
 
 
 # ── YouTube cookies (bypass PO Token block on cloud IPs) ─────────
-# Set YOUTUBE_COOKIES env var in Railway with the contents of cookies.txt
+# Set YOUTUBE_COOKIES env var in Railway with the base64-encoded cookies.txt
 YOUTUBE_COOKIE_FILE = None
 _raw_cookies = os.environ.get('YOUTUBE_COOKIES', '').strip()
 if _raw_cookies:
-    import tempfile as _tf
+    import tempfile as _tf, base64 as _b64
+    # Support both base64-encoded and plain text
+    try:
+        _decoded = _b64.b64decode(_raw_cookies).decode('utf-8')
+    except Exception:
+        _decoded = _raw_cookies
     _cf = _tf.NamedTemporaryFile(mode='w', suffix='.txt',
                                   prefix='yt_cookies_', delete=False)
-    _cf.write(_raw_cookies)
+    _cf.write(_decoded)
     _cf.flush()
     _cf.close()
     YOUTUBE_COOKIE_FILE = _cf.name
-    print(f"  [cookies] YouTube cookies cargadas desde variable de entorno")
+    print(f"  [cookies] YouTube cookies cargadas ({len(_decoded)} bytes)")
 else:
-    print("  [cookies] No hay cookies configuradas (usando cliente tv_embedded)")
+    print("  [cookies] Sin cookies — usando cliente tv_embedded")
 
 
 # ── Shared helpers ───────────────────────────────────────────────
