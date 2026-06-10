@@ -44,6 +44,7 @@ if FFMPEG_LOCATION and FFMPEG_LOCATION not in os.environ.get('PATH', ''):
     os.environ['PATH'] = FFMPEG_LOCATION + os.pathsep + os.environ.get('PATH', '')
 
 
+
 # ── YouTube cookies (bypass PO Token block on cloud IPs) ─────────
 # Set YOUTUBE_COOKIES env var in Railway with the base64-encoded cookies.txt
 YOUTUBE_COOKIE_FILE = None
@@ -52,7 +53,8 @@ if _raw_cookies:
     import tempfile as _tf, base64 as _b64
     # Support both base64-encoded and plain text
     try:
-        _decoded = _b64.b64decode(_raw_cookies).decode('utf-8')
+        _decoded = _b64.b64decode(_raw_cookies).decode('utf-8')\
+            if not _raw_cookies.startswith('#') else _raw_cookies
     except Exception:
         _decoded = _raw_cookies
     _cf = _tf.NamedTemporaryFile(mode='w', suffix='.txt',
@@ -63,7 +65,41 @@ if _raw_cookies:
     YOUTUBE_COOKIE_FILE = _cf.name
     print(f"  [cookies] YouTube cookies cargadas ({len(_decoded)} bytes)")
 else:
-    print("  [cookies] Sin cookies — usando cliente tv_embedded")
+    print("  [cookies] Sin cookies — usando Invidious proxy")
+
+
+# ── Invidious video resolver (avoids YouTube bot detection on cloud IPs) ──
+# Invidious is an open-source YouTube proxy — its servers fetch from YouTube
+# so Railway never directly contacts YouTube
+_INVIDIOUS_INSTANCES = [
+    'https://inv.nadeko.net',
+    'https://invidious.privacydev.net',
+    'https://invidious.nerdvpn.de',
+    'https://iv.datura.network',
+    'https://invidious.fdn.fr',
+]
+
+def _resolve_via_invidious(query: str) -> str:
+    """Search Invidious for query → return Invidious watch URL (or ytsearch fallback)."""
+    import urllib.request as _ureq2, json as _json2
+    encoded = urllib.parse.quote(query)
+    for instance in _INVIDIOUS_INSTANCES:
+        try:
+            api = f"{instance}/api/v1/search?q={encoded}&type=video&page=1"
+            req = _ureq2.Request(api, headers={'User-Agent': 'Mozilla/5.0'})
+            with _ureq2.urlopen(req, timeout=8) as r:
+                results = _json2.loads(r.read().decode('utf-8'))
+            if isinstance(results, list) and results:
+                vid = results[0].get('videoId', '')
+                if vid:
+                    print(f"  [invidious] {query[:40]} → {instance}/watch?v={vid}")
+                    return f"{instance}/watch?v={vid}"
+        except Exception as ex:
+            print(f"  [invidious] {instance} falló: {ex}")
+            continue
+    # All Invidious instances failed — fallback to yt-dlp search
+    print(f"  [invidious] Todos fallaron, usando ytsearch: {query[:40]}")
+    return f'ytsearch1:{query}'
 
 
 # ── Shared helpers ───────────────────────────────────────────────
@@ -91,32 +127,23 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
     hooks = [progress_hook] if progress_hook else []
 
     # ── Anti-bot + reliability settings for cloud servers ────────
-    # tv_embedded bypasses YouTube PO Token requirement on server IPs (2024+)
+    # Try multiple clients; yt-dlp picks the first that works
     common = {
         'outtmpl':          os.path.join(out_dir, '%(title)s.%(ext)s'),
         'progress_hooks':   hooks,
         'quiet':            False,
         'no_warnings':      False,
-        'retries':          5,
-        'fragment_retries': 5,
+        'retries':          10,
+        'fragment_retries': 10,
         'extractor_args': {
             'youtube': {
-                'player_client': ['tv_embedded', 'android_vr', 'web_creator'],
-                'player_skip':   ['webpage', 'configs'],
+                'player_client': ['mweb', 'tv_embedded', 'android_vr'],
             }
         },
-        'http_headers': {
-            'User-Agent': (
-                'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) '
-                'AppleWebKit/538.1 (KHTML, like Gecko) '
-                'Version/6.0 TV Safari/538.1'
-            ),
-        },
     }
-    # Use cookies if available (overrides PO Token requirement)
+    # Use cookies if available (best option — bypasses all restrictions)
     if YOUTUBE_COOKIE_FILE:
         common['cookiefile'] = YOUTUBE_COOKIE_FILE
-        # With cookies, use standard web client for best quality
         common['extractor_args'] = {
             'youtube': {'player_client': ['web', 'android']}
         }
@@ -717,8 +744,9 @@ def get_album_tracks():
             track_num   = item.get('trackNumber', len(tracks) + 1)
             duration_ms = item.get('trackTimeMillis', 0) or 0
 
-            # Build a yt-dlp search URL — yt-dlp will find the best YouTube match
-            yt_url = f'ytsearch1:{artist} {track_name}'
+            # Use Invidious to resolve the video URL (bypasses YouTube bot block on Railway)
+            # Falls back to ytsearch1: if all Invidious instances fail
+            yt_url = _resolve_via_invidious(f'{artist} {track_name}')
 
             tracks.append({
                 'number':      track_num,
