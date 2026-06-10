@@ -67,6 +67,30 @@ def relevance_score(title, channel, query_tokens):
 def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, embed_art=True):
     """Return yt-dlp options dict."""
     hooks = [progress_hook] if progress_hook else []
+
+    # ── Anti-bot settings for cloud servers ──────────────────────
+    # Use Android/iOS YouTube client to avoid bot detection on cloud IPs
+    common = {
+        'outtmpl':          os.path.join(out_dir, '%(title)s.%(ext)s'),
+        'progress_hooks':   hooks,
+        'quiet':            False,
+        'no_warnings':      False,
+        'retries':          5,
+        'fragment_retries': 5,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'web'],
+            }
+        },
+        'http_headers': {
+            'User-Agent': (
+                'Mozilla/5.0 (Linux; Android 12; Pixel 6) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/112.0.0.0 Mobile Safari/537.36'
+            ),
+        },
+    }
+
     if fmt == 'mp3':
         postprocessors = [
             {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': str(audio_quality)},
@@ -74,13 +98,10 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
             {'key': 'FFmpegMetadata', 'add_metadata': True},
         ]
         opts = {
-            'format': 'bestaudio/best',
-            'postprocessors': postprocessors,
-            'writethumbnail': True,
-            'outtmpl': os.path.join(out_dir, '%(title)s.%(ext)s'),
-            'progress_hooks': hooks,
-            'quiet': False,
-            'no_warnings': False,
+            **common,
+            'format':          'bestaudio/best',
+            'postprocessors':  postprocessors,
+            'writethumbnail':  True,
         }
     else:
         if quality == 'best' or not quality:
@@ -91,17 +112,15 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
                 f'/bestvideo[height<={quality}]+bestaudio/best[height<={quality}]'
             )
         opts = {
-            'format': fmt_spec,
+            **common,
+            'format':              fmt_spec,
             'merge_output_format': 'mp4',
-            'postprocessors': [{'key': 'FFmpegMetadata', 'add_metadata': True}],
-            'outtmpl': os.path.join(out_dir, '%(title)s.%(ext)s'),
-            'progress_hooks': hooks,
-            'quiet': False,
-            'no_warnings': False,
+            'postprocessors':      [{'key': 'FFmpegMetadata', 'add_metadata': True}],
         }
     if FFMPEG_LOCATION:
         opts['ffmpeg_location'] = FFMPEG_LOCATION
     return opts
+
 
 
 # ════════════════════════════════════════════════════════════════
