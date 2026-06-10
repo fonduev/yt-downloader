@@ -17,13 +17,21 @@ CORS(app)
 DOWNLOAD_FOLDER = os.path.join(os.path.expanduser("~"), "Downloads", "YT-Downloader")
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-# ── Auto-detect bundled ffmpeg ───────────────────────────────────
+# ── Auto-detect ffmpeg ───────────────────────────────────────────
 def _find_ffmpeg():
+    import shutil
+    # 1. System ffmpeg (Docker / Linux servers with apt-installed ffmpeg)
+    sys_ff = shutil.which('ffmpeg')
+    if sys_ff:
+        folder = os.path.dirname(sys_ff)
+        print(f"  [ffmpeg] Sistema: {folder}")
+        return folder
+    # 2. Bundled imageio-ffmpeg (Windows local development)
     try:
         import imageio_ffmpeg
-        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        exe    = imageio_ffmpeg.get_ffmpeg_exe()
         folder = os.path.dirname(exe)
-        print(f"  [ffmpeg] Encontrado en: {folder}")
+        print(f"  [ffmpeg] Bundle: {folder}")
         return folder
     except Exception as e:
         print(f"  [ffmpeg] No disponible: {e}")
