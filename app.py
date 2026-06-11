@@ -69,40 +69,71 @@ else:
 
 
 # ── Invidious video resolver (avoids YouTube bot detection on cloud IPs) ──
-# Invidious is an open-source YouTube proxy — its servers fetch from YouTube
-# so Railway never directly contacts YouTube
+# Dynamic list of public Invidious instances updated in the background
 _INVIDIOUS_INSTANCES = [
     'https://inv.nadeko.net',
-    'https://invidious.privacydev.net',
     'https://invidious.nerdvpn.de',
-    'https://iv.datura.network',
-    'https://invidious.fdn.fr',
+    'https://invidious.f5.si',
+    'https://yt.chocolatemoo53.com',
+    'https://inv.thepixora.com',
 ]
 
+def _update_invidious_instances_loop():
+    global _INVIDIOUS_INSTANCES
+    import urllib.request as _ureq, json as _json
+    while True:
+        try:
+            req = _ureq.Request('https://api.invidious.io/instances.json', headers={'User-Agent': 'Mozilla/5.0'})
+            with _ureq.urlopen(req, timeout=5) as r:
+                data = _json.loads(r.read().decode('utf-8'))
+            active = []
+            for item in data:
+                if isinstance(item, list) and len(item) >= 2 and isinstance(item[1], dict):
+                    monitor = item[1].get('monitor')
+                    if isinstance(monitor, dict) and monitor.get('down') is False:
+                        uri = item[1].get('uri')
+                        if uri:
+                            active.append(uri.rstrip('/'))
+            if active:
+                _INVIDIOUS_INSTANCES = active
+                print(f"  [invidious] Actualizadas {len(_INVIDIOUS_INSTANCES)} instancias activas desde la API")
+        except Exception as e:
+            print(f"  [invidious] Error al actualizar instancias: {e}")
+        time.sleep(900)
+
+threading.Thread(target=_update_invidious_instances_loop, daemon=True).start()
+
 def _resolve_via_invidious(query: str) -> str:
-    """Search Invidious in PARALLEL across all instances → return first working URL."""
-    import urllib.request as _ureq2, json as _json2
+    """Search Invidious HTML in PARALLEL across all instances → return first working URL."""
+    import urllib.request as _ureq2, json as _json2, re as _re2
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     encoded = urllib.parse.quote(query)
 
     def _try(instance):
         try:
-            api = f"{instance}/api/v1/search?q={encoded}&type=video&page=1"
-            req = _ureq2.Request(api, headers={'User-Agent': 'Mozilla/5.0'})
+            # Use HTML search instead of API, as api is disabled on most instances (returning 403)
+            search_url = f"{instance}/search?q={encoded}"
+            req = _ureq2.Request(search_url, headers={'User-Agent': 'Mozilla/5.0'})
             with _ureq2.urlopen(req, timeout=5) as r:
-                results = _json2.loads(r.read().decode('utf-8'))
-            if isinstance(results, list) and results:
-                vid = results[0].get('videoId', '')
-                if vid:
+                html = r.read().decode('utf-8')
+            matches = _re2.findall(r'/watch\?v=([a-zA-Z0-9_-]{11})', html)
+            if matches:
+                unique_vids = list(dict.fromkeys(matches))
+                vid = unique_vids[0]
+                if YOUTUBE_COOKIE_FILE:
+                    # If cookies are loaded, download directly from YouTube for best performance
+                    return f"https://www.youtube.com/watch?v={vid}"
+                else:
+                    # Otherwise, download via Invidious proxy to bypass bot block
                     return f"{instance}/watch?v={vid}"
         except Exception:
             pass
         return None
 
     # Query all instances at once — return first success
-    with ThreadPoolExecutor(max_workers=len(_INVIDIOUS_INSTANCES)) as ex:
-        futures = {ex.submit(_try, inst): inst for inst in _INVIDIOUS_INSTANCES}
+    with ThreadPoolExecutor(max_workers=min(len(_INVIDIOUS_INSTANCES), 8)) as ex:
+        futures = {ex.submit(_try, inst): inst for inst in _INVIDIOUS_INSTANCES[:8]}
         for fut in as_completed(futures, timeout=10):
             result = fut.result()
             if result:
@@ -155,9 +186,6 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
     # Use cookies if available (best option — bypasses all restrictions)
     if YOUTUBE_COOKIE_FILE:
         common['cookiefile'] = YOUTUBE_COOKIE_FILE
-        common['extractor_args'] = {
-            'youtube': {'player_client': ['web', 'android']}
-        }
 
 
     if fmt == 'mp3':
@@ -260,23 +288,89 @@ def prepare_download():
         opts = build_ydl_opts(fmt, quality, aq, tmp_dir, hook)
 
         for url in urls:
-            try:
-                # Resolve ytsearch: URLs via Invidious to bypass YouTube bot block
-                if url.startswith('ytsearch'):
-                    query = url.split(':', 1)[1]
-                    url = _resolve_via_invidious(query)
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    ydl.download([url])
+            success = False
+            last_err = None
+
+            # Step 1: If we have cookies, try direct ytsearch via yt-dlp first
+            if url.startswith('ytsearch') and YOUTUBE_COOKIE_FILE:
+                try:
+                    print(f"  [download] Intentando descarga directa yt-dlp con cookies: {url}")
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        ydl.download([url])
+                    success = True
+                except Exception as e:
+                    last_err = e
+                    print(f"  [download] Falló descarga directa con cookies: {e}. Probando Invidious...")
+
+            # Step 2: If not successful yet and it is/was a search query, resolve via Invidious HTML
+            if not success and url.startswith('ytsearch'):
+                query = url.split(':', 1)[1]
+                resolved_url = _resolve_via_invidious(query)
+                if resolved_url:
+                    try:
+                        print(f"  [download] Intentando descargar URL resuelta por Invidious: {resolved_url}")
+                        dl_opts = opts
+                        if 'youtube.com' not in resolved_url:
+                            # Strip cookies for Invidious proxy download to avoid header mismatch
+                            dl_opts = opts.copy()
+                            dl_opts.pop('cookiefile', None)
+                            dl_opts.pop('extractor_args', None)
+
+                        with yt_dlp.YoutubeDL(dl_opts) as ydl:
+                            ydl.download([resolved_url])
+                        success = True
+                    except Exception as e:
+                        last_err = e
+                        print(f"  [download] Falló descarga de URL resuelta {resolved_url}: {e}")
+
+                        # Fallback: if it was a YouTube URL that failed (expired cookies), try Invidious proxy
+                        if 'youtube.com' in resolved_url:
+                            import urllib.parse as _up
+                            parsed = _up.urlparse(resolved_url)
+                            vid = _up.parse_qs(parsed.query).get('v', [''])[0]
+                            if vid:
+                                for inst in _INVIDIOUS_INSTANCES:
+                                    proxy_url = f"{inst}/watch?v={vid}"
+                                    try:
+                                        print(f"  [download] Fallback extremo: descargando desde proxy Invidious: {proxy_url}")
+                                        proxy_opts = opts.copy()
+                                        proxy_opts.pop('cookiefile', None)
+                                        proxy_opts.pop('extractor_args', None)
+                                        with yt_dlp.YoutubeDL(proxy_opts) as ydl:
+                                            ydl.download([proxy_url])
+                                        success = True
+                                        break
+                                    except Exception as ex2:
+                                        last_err = ex2
+                                        print(f"  [download] Falló fallback proxy {proxy_url}: {ex2}")
+                else:
+                    last_err = Exception("Invidious no pudo resolver el término de búsqueda.")
+
+            # Step 3: If it's a direct URL (not search query), download directly
+            if not success and not url.startswith('ytsearch'):
+                try:
+                    print(f"  [download] Descargando URL directa: {url}")
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        ydl.download([url])
+                    success = True
+                except Exception as e:
+                    last_err = e
+                    print(f"  [download] Falló descarga directa de {url}: {e}")
+
+            if success:
                 with prepare_lock:
                     if token in prepare_jobs:
                         prepare_jobs[token]['completed'] += 1
                         c = prepare_jobs[token]['completed']
                         prepare_jobs[token]['progress'] = (c / len(urls)) * 100
-            except Exception as e:
+            else:
                 with prepare_lock:
                     if token in prepare_jobs:
                         prepare_jobs[token]['failed'] += 1
-                        prepare_jobs[token]['error'] = str(e)
+                        prepare_jobs[token]['error'] = str(last_err or "Error desconocido")
+                        c = prepare_jobs[token]['completed']
+                        f = prepare_jobs[token]['failed']
+                        prepare_jobs[token]['progress'] = ((c + f) / len(urls)) * 100
 
         # Only count real media files — ignore leftover .jpg/.webp thumbnails
         MEDIA_EXTS = {'.mp3', '.mp4', '.m4a', '.webm', '.wav', '.ogg', '.opus', '.flac'}
@@ -804,6 +898,39 @@ def open_folder():
 @app.route('/api/downloads-path')
 def get_downloads_path():
     return jsonify({'path': DOWNLOAD_FOLDER})
+
+
+@app.route('/api/diagnostics')
+def diagnostics():
+    raw_cookies = os.environ.get('YOUTUBE_COOKIES', '').strip()
+    cookie_file_exists = False
+    cookie_file_size = 0
+    cookie_preview = ""
+    if YOUTUBE_COOKIE_FILE:
+        cookie_file_exists = os.path.exists(YOUTUBE_COOKIE_FILE)
+        if cookie_file_exists:
+            cookie_file_size = os.path.getsize(YOUTUBE_COOKIE_FILE)
+            try:
+                with open(YOUTUBE_COOKIE_FILE, 'r', encoding='utf-8') as f:
+                    cookie_preview = f.read(150) + "..."
+            except Exception as e:
+                cookie_preview = f"Error reading preview: {e}"
+
+    import yt_dlp
+    yt_dlp_version = getattr(yt_dlp, 'version', None)
+    yt_version_str = getattr(yt_dlp_version, '__version__', 'unknown') if yt_dlp_version else 'unknown'
+
+    return jsonify({
+        'has_env_var': bool(raw_cookies),
+        'env_var_len': len(raw_cookies),
+        'cookie_file_path': YOUTUBE_COOKIE_FILE,
+        'cookie_file_exists': cookie_file_exists,
+        'cookie_file_size': cookie_file_size,
+        'cookie_file_preview': cookie_preview,
+        'yt_dlp_version': yt_version_str,
+        'ffmpeg_location': FFMPEG_LOCATION,
+        'active_invidious_instances': _INVIDIOUS_INSTANCES[:15],
+    })
 
 
 if __name__ == '__main__':
