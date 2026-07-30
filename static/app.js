@@ -138,6 +138,18 @@ function toastError(toast, msg) {
 // ══════════════════════════════════════════════════════
 async function browserDownload(urls, fmt, quality, audioQuality, label) {
   if (!urls?.length) return;
+
+  // If multiple URLs selected, download each song individually (no ZIP archive)
+  if (urls.length > 1) {
+    for (let i = 0; i < urls.length; i++) {
+      const singleUrl = urls[i];
+      const singleLabel = `Canción ${i + 1}/${urls.length}`;
+      browserDownload([singleUrl], fmt, quality, audioQuality, singleLabel);
+      await new Promise(r => setTimeout(r, 600));
+    }
+    return;
+  }
+
   const toast = createDownloadToast(label || `${urls.length} archivo(s)`);
   let token;
   try {
@@ -524,7 +536,7 @@ $('downloadSelectedBtn').addEventListener('click', () => {
   const q     = state.bulkFormat === 'mp4' ? state.bulkVideoQuality : 'best';
   const label = selected.length === 1
     ? (state.searchResults[selected[0]].title || 'Canción')
-    : `${selected.length} canciones → canciones.zip`;
+    : `${selected.length} canciones por separado`;
   browserDownload(urls, state.bulkFormat, q, state.bulkAudioQuality, label);
 });
 
