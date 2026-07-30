@@ -11,11 +11,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --upgrade yt-dlp
 
-
 COPY . .
 
-EXPOSE 8080
+# Create temp downloads directory
+RUN mkdir -p /tmp/ytdl_downloads
 
-# gunicorn.conf.py reads PORT from environment using Python — no shell expansion issues
+EXPOSE ${PORT:-10000}
+
 CMD ["gunicorn", "app:app", "-c", "gunicorn.conf.py"]
-

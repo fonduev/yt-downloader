@@ -14,7 +14,11 @@ import yt_dlp
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
-DOWNLOAD_FOLDER = os.path.join(os.path.expanduser("~"), "Downloads", "YT-Downloader")
+# Use /tmp on cloud servers (Railway, Render, HF), ~/Downloads locally
+if os.environ.get('RENDER') or os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('SPACE_ID'):
+    DOWNLOAD_FOLDER = '/tmp/ytdl_downloads'
+else:
+    DOWNLOAD_FOLDER = os.path.join(os.path.expanduser("~"), "Downloads", "YT-Downloader")
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 # ── Auto-detect ffmpeg ───────────────────────────────────────────
@@ -889,7 +893,10 @@ def get_album_tracks():
 @app.route('/api/open-folder', methods=['POST'])
 def open_folder():
     try:
-        os.startfile(DOWNLOAD_FOLDER)
+        if sys.platform == 'win32':
+            os.startfile(DOWNLOAD_FOLDER)
+        else:
+            return jsonify({'error': 'No disponible en servidor cloud', 'path': DOWNLOAD_FOLDER}), 200
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -934,7 +941,7 @@ def diagnostics():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 10000))
     print("=" * 60)
     print("  [YT-Downloader] Iniciando servidor...")
     print(f"  [ffmpeg] {'OK - ' + FFMPEG_LOCATION if FFMPEG_LOCATION else 'No encontrado'}")

@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: yt-downloader
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/diagnostics
+    envVars:
+      - key: RENDER
+        value: "true"
