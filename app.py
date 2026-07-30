@@ -168,6 +168,75 @@ def relevance_score(title, channel, query_tokens):
     return sum(1 for t in query_tokens if t in text)
 
 
+def _download_target(target_url, base_opts):
+    """Robust download helper that tries multiple strategies for any URL."""
+    last_err = None
+
+    # 1. If target_url is a search query (ytsearch1:...), resolve via Invidious search first
+    candidate_urls = []
+    if target_url.startswith('ytsearch'):
+        query = target_url.split(':', 1)[1]
+        resolved = _resolve_via_invidious(query)
+        if resolved:
+            candidate_urls.append(resolved)
+        candidate_urls.append(target_url)  # Fallback to direct ytsearch
+    else:
+        candidate_urls.append(target_url)
+
+    for url in candidate_urls:
+        # Strategy A: Attempt with base_opts (including cookies if configured)
+        try:
+            print(f"  [download-attempt] Estrategia A (con base_opts): {url}")
+            with yt_dlp.YoutubeDL(base_opts) as ydl:
+                ydl.download([url])
+            return True, None
+        except Exception as e1:
+            last_err = e1
+            print(f"  [download-attempt] Estrategia A falló: {e1}")
+
+        # Strategy B: If base_opts has cookies, retry WITHOUT cookies (cookies might be expired/blocked)
+        if 'cookiefile' in base_opts:
+            try:
+                print(f"  [download-attempt] Estrategia B (sin cookies): {url}")
+                opts_no_cookie = base_opts.copy()
+                opts_no_cookie.pop('cookiefile', None)
+                with yt_dlp.YoutubeDL(opts_no_cookie) as ydl:
+                    ydl.download([url])
+                return True, None
+            except Exception as e2:
+                last_err = e2
+                print(f"  [download-attempt] Estrategia B falló: {e2}")
+
+        # Strategy C: If it's a YouTube URL, extract video ID and try downloading via Invidious proxy instances
+        if 'youtube.com' in url or 'youtu.be' in url:
+            import urllib.parse as _up
+            vid = None
+            if 'youtu.be' in url:
+                vid = url.split('/')[-1].split('?')[0]
+            else:
+                parsed = _up.urlparse(url)
+                vid = _up.parse_qs(parsed.query).get('v', [''])[0]
+
+            if vid:
+                for inst in _INVIDIOUS_INSTANCES:
+                    proxy_url = f"{inst}/watch?v={vid}"
+                    try:
+                        print(f"  [download-attempt] Estrategia C (proxy {inst}): {proxy_url}")
+                        proxy_opts = base_opts.copy()
+                        proxy_opts.pop('cookiefile', None)
+                        proxy_opts['extractor_args'] = {
+                            'youtube': {'player_client': ['android', 'ios', 'mweb']}
+                        }
+                        with yt_dlp.YoutubeDL(proxy_opts) as ydl:
+                            ydl.download([proxy_url])
+                        return True, None
+                    except Exception as e3:
+                        last_err = e3
+                        print(f"  [download-attempt] Proxy {inst} falló: {e3}")
+
+    return False, last_err
+
+
 def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, embed_art=True):
     """Return yt-dlp options dict."""
     hooks = [progress_hook] if progress_hook else []
@@ -183,12 +252,12 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
         'fragment_retries': 10,
         'extractor_args': {
             'youtube': {
-                'player_client': ['mweb', 'tv_embedded', 'android_vr'],
+                'player_client': ['android', 'ios', 'mweb', 'tv_embedded'],
             }
         },
     }
-    # Use cookies if available (best option — bypasses all restrictions)
-    if YOUTUBE_COOKIE_FILE:
+    # Use cookies if available
+    if YOUTUBE_COOKIE_FILE and os.path.exists(YOUTUBE_COOKIE_FILE):
         common['cookiefile'] = YOUTUBE_COOKIE_FILE
 
 
@@ -292,100 +361,7 @@ def prepare_download():
         opts = build_ydl_opts(fmt, quality, aq, tmp_dir, hook)
 
         for url in urls:
-            success = False
-            last_err = None
-
-            # Step 1: If we have cookies, try direct ytsearch via yt-dlp first
-            if url.startswith('ytsearch') and YOUTUBE_COOKIE_FILE:
-                try:
-                    print(f"  [download] Intentando descarga directa yt-dlp con cookies: {url}")
-                    with yt_dlp.YoutubeDL(opts) as ydl:
-                        ydl.download([url])
-                    success = True
-                except Exception as e:
-                    last_err = e
-                    print(f"  [download] Falló descarga directa con cookies: {e}. Probando Invidious...")
-
-            # Step 2: If not successful yet and it is/was a search query, resolve via Invidious HTML
-            if not success and url.startswith('ytsearch'):
-                query = url.split(':', 1)[1]
-                resolved_url = _resolve_via_invidious(query)
-                if resolved_url:
-                    try:
-                        print(f"  [download] Intentando descargar URL resuelta por Invidious: {resolved_url}")
-                        dl_opts = opts
-                        if 'youtube.com' not in resolved_url:
-                            # Strip cookies for Invidious proxy download to avoid header mismatch
-                            dl_opts = opts.copy()
-                            dl_opts.pop('cookiefile', None)
-                            dl_opts.pop('extractor_args', None)
-
-                        with yt_dlp.YoutubeDL(dl_opts) as ydl:
-                            ydl.download([resolved_url])
-                        success = True
-                    except Exception as e:
-                        last_err = e
-                        print(f"  [download] Falló descarga de URL resuelta {resolved_url}: {e}")
-
-                        # Fallback: if it was a YouTube URL that failed (expired cookies), try Invidious proxy
-                        if 'youtube.com' in resolved_url:
-                            import urllib.parse as _up
-                            parsed = _up.urlparse(resolved_url)
-                            vid = _up.parse_qs(parsed.query).get('v', [''])[0]
-                            if vid:
-                                for inst in _INVIDIOUS_INSTANCES:
-                                    proxy_url = f"{inst}/watch?v={vid}"
-                                    try:
-                                        print(f"  [download] Fallback extremo: descargando desde proxy Invidious: {proxy_url}")
-                                        proxy_opts = opts.copy()
-                                        proxy_opts.pop('cookiefile', None)
-                                        proxy_opts.pop('extractor_args', None)
-                                        with yt_dlp.YoutubeDL(proxy_opts) as ydl:
-                                            ydl.download([proxy_url])
-                                        success = True
-                                        break
-                                    except Exception as ex2:
-                                        last_err = ex2
-                                        print(f"  [download] Falló fallback proxy {proxy_url}: {ex2}")
-                else:
-                    last_err = Exception("Invidious no pudo resolver el término de búsqueda.")
-
-            # Step 3: If it's a direct URL (not search query), download directly
-            if not success and not url.startswith('ytsearch'):
-                try:
-                    print(f"  [download] Descargando URL directa: {url}")
-                    with yt_dlp.YoutubeDL(opts) as ydl:
-                        ydl.download([url])
-                    success = True
-                except Exception as e:
-                    last_err = e
-                    print(f"  [download] Falló descarga directa de {url}: {e}")
-
-                    # Fallback for direct YouTube URLs: try resolving video ID and downloading via Invidious proxy
-                    if 'youtube.com' in url or 'youtu.be' in url:
-                        import urllib.parse as _up
-                        vid = None
-                        if 'youtu.be' in url:
-                            vid = url.split('/')[-1].split('?')[0]
-                        else:
-                            parsed = _up.urlparse(url)
-                            vid = _up.parse_qs(parsed.query).get('v', [''])[0]
-
-                        if vid:
-                            for inst in _INVIDIOUS_INSTANCES:
-                                proxy_url = f"{inst}/watch?v={vid}"
-                                try:
-                                    print(f"  [download] Fallback Invidious para URL directa: {proxy_url}")
-                                    proxy_opts = opts.copy()
-                                    proxy_opts.pop('cookiefile', None)
-                                    proxy_opts.pop('extractor_args', None)
-                                    with yt_dlp.YoutubeDL(proxy_opts) as ydl:
-                                        ydl.download([proxy_url])
-                                    success = True
-                                    break
-                                except Exception as ex3:
-                                    last_err = ex3
-                                    print(f"  [download] Falló fallback proxy {proxy_url}: {ex3}")
+            success, last_err = _download_target(url, opts)
 
             if success:
                 with prepare_lock:
