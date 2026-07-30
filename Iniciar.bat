@@ -1,5 +1,6 @@
 @echo off
 title YT Downloader Pro
+cd /d "%~dp0"
 echo.
 echo  ========================================
 echo   YT Downloader Pro - Iniciando...
