@@ -309,15 +309,56 @@ async function analyzeUrl() {
   $('analyzeBtn').disabled = true;
   $('analyzeBtn').querySelector('.btn-text').textContent = 'Analizando...';
   $('videoInfoSection').classList.add('hidden');
+
   try {
-    const res  = await fetch(`${API}/info`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url})});
+    const res = await fetch(`${API}/info`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url})});
     const data = await res.json();
-    if (!res.ok || data.error) { showError('errorAlert', data.error || 'No se pudo analizar.'); return; }
-    data.type === 'video' ? renderSingleVideo(data, url) : renderPlaylist(data);
-    $('videoInfoSection').classList.remove('hidden');
-    updateSelectedInfo();
-  } catch { showError('errorAlert', 'Error de conexión. ¿Está corriendo el servidor?'); }
-  finally { $('analyzeBtn').disabled = false; $('analyzeBtn').querySelector('.btn-text').textContent = 'Analizar'; }
+    if (res.ok && !data.error) {
+      data.type === 'video' ? renderSingleVideo(data, url) : renderPlaylist(data);
+      $('videoInfoSection').classList.remove('hidden');
+      updateSelectedInfo();
+      return;
+    }
+  } catch (e) {
+    console.log('Local /api/info unavailable, using client-side YouTubei fallback...');
+  }
+
+  // Fallback: Client-side YouTubei extraction (0 PC required)
+  try {
+    const ytRes = await fetch('https://www.youtube.com/youtubei/v1/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        context: { client: { clientName: "WEB", clientVersion: "2.20231201.00.00" } },
+        query: url
+      })
+    });
+    const ytData = await ytRes.json();
+    const contents = ytData.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
+    const firstVid = contents.find(item => item.videoRenderer)?.videoRenderer;
+    if (firstVid && firstVid.videoId) {
+      const data = {
+        type: 'video',
+        id: firstVid.videoId,
+        title: firstVid.title?.runs?.[0]?.text || 'Sin título',
+        uploader: firstVid.ownerText?.runs?.[0]?.text || '',
+        duration: firstVid.lengthText?.simpleText || '',
+        thumbnail: firstVid.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${firstVid.videoId}/mqdefault.jpg`,
+        view_count: 0,
+        url: `https://www.youtube.com/watch?v=${firstVid.videoId}`
+      };
+      renderSingleVideo(data, data.url);
+      $('videoInfoSection').classList.remove('hidden');
+      updateSelectedInfo();
+    } else {
+      showError('errorAlert', 'No se encontró el video. Intenta usando la pestaña Buscar Música.');
+    }
+  } catch (err) {
+    showError('errorAlert', 'No se pudo analizar. Intenta usando la pestaña Buscar Música.');
+  } finally {
+    $('analyzeBtn').disabled = false;
+    $('analyzeBtn').querySelector('.btn-text').textContent = 'Analizar';
+  }
 }
 
 function renderSingleVideo(data, url) {
