@@ -944,11 +944,22 @@ def diagnostics():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
+    local_ip = "localhost"
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
     print("=" * 60)
-    print("  [YT-Downloader] Iniciando servidor...")
-    print(f"  [ffmpeg] {'OK - ' + FFMPEG_LOCATION if FFMPEG_LOCATION else 'No encontrado'}")
-    print(f"  [Carpeta] {DOWNLOAD_FOLDER}")
-    print(f"  [Servidor] http://localhost:{port}")
+    print("  [YT-Downloader Pro] Servidor listo!")
+    print(f"  [ffmpeg]   {'OK - ' + FFMPEG_LOCATION if FFMPEG_LOCATION else 'No encontrado'}")
+    print(f"  [Carpeta]  {DOWNLOAD_FOLDER}")
+    print(f"  [En la PC] http://localhost:{port}")
+    print(f"  [En Celular / Wi-Fi] http://{local_ip}:{port}")
     print("=" * 60)
     app.run(debug=False, host='0.0.0.0', port=port)
 
