@@ -394,10 +394,16 @@ def prepare_download():
             return
 
         if len(files) == 1:
-            filepath = os.path.join(tmp_dir, files[0])
+            src = os.path.join(tmp_dir, files[0])
             filename = files[0]
+            final_path = os.path.join(DOWNLOAD_FOLDER, filename)
+            try:
+                shutil.copy2(src, final_path)
+                filepath = final_path
+            except Exception:
+                filepath = src
         else:
-            zip_path = os.path.join(tmp_dir, 'canciones.zip')
+            zip_path = os.path.join(DOWNLOAD_FOLDER, 'canciones.zip')
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
                 for f in files:
                     zf.write(os.path.join(tmp_dir, f), f)
@@ -440,18 +446,9 @@ def get_file(token):
 
     filepath = job['filepath']
     filename = job['filename']
-    tmp_dir  = job['tmp_dir']
 
     if not os.path.exists(filepath):
         return jsonify({'error': 'Archivo no encontrado'}), 404
-
-    def cleanup():
-        time.sleep(300)  # Keep temp dir for 5 min so mobile browser retries succeed
-        with prepare_lock:
-            prepare_jobs.pop(token, None)
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-
-    threading.Thread(target=cleanup, daemon=True).start()
 
     # Sanitize filename for HTTP Content-Disposition headers (mobile browser compatibility)
     safe_name = unicodedata.normalize('NFKD', filename).encode('ascii', 'ignore').decode('ascii')
