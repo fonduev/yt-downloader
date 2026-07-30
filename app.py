@@ -942,26 +942,58 @@ def diagnostics():
     })
 
 
-def _start_localtunnel(port_num):
-    """Starts localtunnel in background thread and prints public URL for mobile phones."""
-    import subprocess
+def _publish_mobile_url(url):
+    print("\n" + "=" * 60)
+    print("  📱 ENLACE PUBLICO PARA EL CELULAR DE TU MAMA:")
+    print(f"  👉 {url}")
+    print("  (Copia y envía este enlace por WhatsApp a tu mamá)")
+    print("=" * 60 + "\n")
     try:
+        with open("ENLACE_PARA_MAMA.txt", "w", encoding="utf-8") as f:
+            f.write(f"Enlace para el celular de tu mamá:\n{url}\n\nEnvíale este enlace por WhatsApp para que abra la app desde su teléfono.\n")
+    except Exception:
+        pass
+
+
+def _start_tunnel(port_num):
+    """Starts SSH serveo / localtunnel in background thread and prints public URL for mobile phones."""
+    import subprocess
+    # Strategy 1: Try serveo.net via SSH (built-in Windows SSH)
+    try:
+        cmd = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -R 80:localhost:{port_num} serveo.net"
         proc = subprocess.Popen(
-            f"npx -y localtunnel --port {port_num}",
+            cmd,
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True
         )
         for line in proc.stdout:
+            if "Forwarding HTTP traffic from" in line:
+                url = line.strip().split("Forwarding HTTP traffic from")[-1].strip()
+                _publish_mobile_url(url)
+                return
+            elif "your url is:" in line:
+                url = line.strip().split("your url is:")[-1].strip()
+                _publish_mobile_url(url)
+                return
+    except Exception:
+        pass
+
+    # Strategy 2: Fallback to localtunnel
+    try:
+        proc2 = subprocess.Popen(
+            f"npx -y localtunnel --port {port_num}",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        for line in proc2.stdout:
             if "your url is:" in line:
                 url = line.strip().split("your url is:")[-1].strip()
-                print("\n" + "=" * 60)
-                print("  📱 ENLACE PUBLICO PARA EL CELULAR DE TU MAMA:")
-                print(f"  👉 {url}")
-                print("  (Abre este enlace en el celular de tu mamá desde cualquier lugar)")
-                print("=" * 60 + "\n")
-                break
+                _publish_mobile_url(url)
+                return
     except Exception:
         pass
 
@@ -978,9 +1010,9 @@ if __name__ == '__main__':
     except Exception:
         pass
 
-    # Start localtunnel background thread if running locally
+    # Start tunnel background thread if running locally
     if not os.environ.get('RENDER') and not os.environ.get('RAILWAY_ENVIRONMENT'):
-        threading.Thread(target=_start_localtunnel, args=(port,), daemon=True).start()
+        threading.Thread(target=_start_tunnel, args=(port,), daemon=True).start()
 
     print("=" * 60)
     print("  [YT-Downloader Pro] Servidor listo!")
