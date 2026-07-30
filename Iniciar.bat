@@ -39,13 +39,13 @@ if errorlevel 1 (
 
 echo.
 echo  [2/3] Iniciando servidor...
-echo  [3/3] Abre tu navegador en: http://localhost:5000
+echo  [3/3] Abre tu navegador en: http://localhost:10000
 echo.
 echo  Presiona Ctrl+C para detener el servidor.
 echo.
 
 :: Open browser after a short delay
-start "" timeout /t 2 /nobreak >nul && start "" "http://localhost:5000"
+start "" timeout /t 2 /nobreak >nul && start "" "http://localhost:10000"
 
 :: Start the Flask app
 python app.py
