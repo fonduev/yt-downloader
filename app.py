@@ -464,12 +464,19 @@ def get_file(token):
     if not os.path.exists(filepath):
         return jsonify({'error': 'Archivo no encontrado'}), 404
 
-    safe_name = unicodedata.normalize('NFKD', filename).encode('ascii', 'ignore').decode('ascii')
-    if not safe_name or not os.path.splitext(safe_name)[1]:
-        ext_raw = os.path.splitext(filename)[1]
-        safe_name = f"cancion{ext_raw if ext_raw else '.mp3'}"
+    ext_raw = os.path.splitext(filename)[1].lower()
+    if not ext_raw:
+        ext_raw = '.mp3'
 
-    ext = os.path.splitext(filename)[1].lower()
+    raw_base = os.path.splitext(filename)[0]
+    safe_base = unicodedata.normalize('NFKD', raw_base).encode('ascii', 'ignore').decode('ascii')
+    safe_base = re.sub(r'[^a-zA-Z0-9_\-]', '_', safe_base).strip('_')
+    if not safe_base:
+        safe_base = 'cancion'
+
+    safe_name = f"{safe_base}{ext_raw}"
+    encoded_utf8 = urllib.parse.quote(filename)
+
     # Force application/octet-stream so mobile Chrome/Safari download directly to disk without media player buffering
     mimetype = 'application/octet-stream'
     file_size = os.path.getsize(filepath)
@@ -513,7 +520,7 @@ def get_file(token):
 
     from flask import Response
     res = Response(generate_chunks(), status=status_code, mimetype=mimetype)
-    res.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"; filename*=UTF-8\'\'{safe_name}'
+    res.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"; filename*=UTF-8\'\'{encoded_utf8}'
     res.headers['Content-Length'] = str(content_length)
     res.headers['Accept-Ranges'] = 'bytes'
     res.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
