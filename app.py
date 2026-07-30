@@ -361,6 +361,32 @@ def prepare_download():
                     last_err = e
                     print(f"  [download] Falló descarga directa de {url}: {e}")
 
+                    # Fallback for direct YouTube URLs: try resolving video ID and downloading via Invidious proxy
+                    if 'youtube.com' in url or 'youtu.be' in url:
+                        import urllib.parse as _up
+                        vid = None
+                        if 'youtu.be' in url:
+                            vid = url.split('/')[-1].split('?')[0]
+                        else:
+                            parsed = _up.urlparse(url)
+                            vid = _up.parse_qs(parsed.query).get('v', [''])[0]
+
+                        if vid:
+                            for inst in _INVIDIOUS_INSTANCES:
+                                proxy_url = f"{inst}/watch?v={vid}"
+                                try:
+                                    print(f"  [download] Fallback Invidious para URL directa: {proxy_url}")
+                                    proxy_opts = opts.copy()
+                                    proxy_opts.pop('cookiefile', None)
+                                    proxy_opts.pop('extractor_args', None)
+                                    with yt_dlp.YoutubeDL(proxy_opts) as ydl:
+                                        ydl.download([proxy_url])
+                                    success = True
+                                    break
+                                except Exception as ex3:
+                                    last_err = ex3
+                                    print(f"  [download] Falló fallback proxy {proxy_url}: {ex3}")
+
             if success:
                 with prepare_lock:
                     if token in prepare_jobs:
