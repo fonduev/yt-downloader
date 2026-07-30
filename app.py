@@ -470,9 +470,8 @@ def get_file(token):
         safe_name = f"cancion{ext_raw if ext_raw else '.mp3'}"
 
     ext = os.path.splitext(filename)[1].lower()
-    mime_map = {'.mp3': 'audio/mpeg', '.mp4': 'video/mp4',
-                '.m4a': 'audio/mp4', '.zip': 'application/zip', '.webm': 'audio/webm'}
-    mimetype = mime_map.get(ext, 'application/octet-stream')
+    # Force application/octet-stream so mobile Chrome/Safari download directly to disk without media player buffering
+    mimetype = 'application/octet-stream'
     file_size = os.path.getsize(filepath)
 
     # HTTP Range handling for Android Chrome / Mobile Safari download resume (206 Partial Content)
@@ -514,10 +513,12 @@ def get_file(token):
 
     from flask import Response
     res = Response(generate_chunks(), status=status_code, mimetype=mimetype)
-    res.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+    res.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"; filename*=UTF-8\'\'{safe_name}'
     res.headers['Content-Length'] = str(content_length)
     res.headers['Accept-Ranges'] = 'bytes'
-    res.headers['Cache-Control'] = 'no-cache'
+    res.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    res.headers['Pragma'] = 'no-cache'
+    res.headers['Expires'] = '0'
 
     if status_code == 206:
         res.headers['Content-Range'] = f'bytes {byte_start}-{byte_end}/{file_size}'
