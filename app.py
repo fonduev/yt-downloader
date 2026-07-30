@@ -168,19 +168,34 @@ def relevance_score(title, channel, query_tokens):
     return sum(1 for t in query_tokens if t in text)
 
 
-def _download_target(target_url, base_opts):
+def _download_target(target_url, base_opts, is_mp3=False):
     """Robust download helper that tries multiple strategies for any URL."""
     last_err = None
 
-    # 1. If target_url is a search query (ytsearch1:...), resolve via Invidious search first
     candidate_urls = []
     if target_url.startswith('ytsearch'):
         query = target_url.split(':', 1)[1]
+        if is_mp3:
+            # If downloading MP3, search official audio/visualizer first to avoid video intros
+            candidate_urls.append(f"ytsearch1:{query} official audio")
+            candidate_urls.append(f"ytsearch1:{query} audio")
+
         resolved = _resolve_via_invidious(query)
         if resolved:
             candidate_urls.append(resolved)
         candidate_urls.append(target_url)  # Fallback to direct ytsearch
     else:
+        if is_mp3 and ('youtube.com' in target_url or 'youtu.be' in target_url):
+            try:
+                with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True, 'skip_download': True}) as ydl_flat:
+                    info_flat = ydl_flat.extract_info(target_url, download=False)
+                    raw_title = info_flat.get('title', '')
+                    if any(term in raw_title.lower() for term in ['official video', 'video oficial', 'music video', 'video clip']):
+                        clean_t = re.sub(r'(?i)\(official video\)|\[official video\]|\(video oficial\)|\[video oficial\]', '', raw_title).strip().strip('-').strip()
+                        if clean_t:
+                            candidate_urls.append(f"ytsearch1:{clean_t} official audio")
+            except Exception:
+                pass
         candidate_urls.append(target_url)
 
     for url in candidate_urls:
@@ -241,15 +256,14 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
     """Return yt-dlp options dict."""
     hooks = [progress_hook] if progress_hook else []
 
-    # ── Anti-bot + reliability settings for cloud servers ────────
-    # Try multiple clients; yt-dlp picks the first that works
     common = {
-        'outtmpl':          os.path.join(out_dir, '%(title)s.%(ext)s'),
-        'progress_hooks':   hooks,
-        'quiet':            False,
-        'no_warnings':      False,
-        'retries':          10,
-        'fragment_retries': 10,
+        'outtmpl':                        os.path.join(out_dir, '%(title)s.%(ext)s'),
+        'progress_hooks':                 hooks,
+        'quiet':                          False,
+        'no_warnings':                    False,
+        'retries':                        10,
+        'fragment_retries':               10,
+        'concurrent_fragment_downloads': 5,
         'extractor_args': {
             'youtube': {
                 'player_client': ['android', 'ios', 'mweb', 'tv_embedded'],
@@ -361,7 +375,7 @@ def prepare_download():
         opts = build_ydl_opts(fmt, quality, aq, tmp_dir, hook)
 
         for url in urls:
-            success, last_err = _download_target(url, opts)
+            success, last_err = _download_target(url, opts, is_mp3=(fmt == 'mp3'))
 
             if success:
                 with prepare_lock:
@@ -489,7 +503,7 @@ def get_file(token):
         with open(filepath, 'rb') as f:
             f.seek(byte_start)
             remaining = content_length
-            chunk_size = 64 * 1024
+            chunk_size = 256 * 1024
             while remaining > 0:
                 to_read = min(chunk_size, remaining)
                 data = f.read(to_read)
