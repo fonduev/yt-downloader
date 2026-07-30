@@ -267,7 +267,7 @@ def build_ydl_opts(fmt, quality, audio_quality, out_dir, progress_hook=None, emb
         'concurrent_fragment_downloads': 5,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios', 'mweb', 'tv_embedded'],
+                'player_client': ['mweb', 'tv_embedded', 'web', 'android_vr'],
             }
         },
     }
