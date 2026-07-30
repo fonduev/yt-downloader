@@ -93,22 +93,34 @@ function updateToast(toast, data) {
   if (data.current_title) toast.querySelector('.toast-sub').textContent = data.current_title;
   if (data.speed) toast.querySelector('.toast-speed').textContent = data.speed;
   if (data.eta)   toast.querySelector('.toast-eta').textContent   = `ETA ${data.eta}`;
+  if (pct >= 50 && pct < 100 && !data.speed) {
+    toast.querySelector('.toast-speed').textContent = 'Convirtiendo audio...';
+  }
   if (data.total > 1)
     toast.querySelector('.toast-title').textContent = `Preparando ${data.completed}/${data.total} archivos...`;
 }
 
-function toastDone(toast, filename) {
+function toastDone(toast, filename, downloadUrl) {
   if (!toast?.isConnected) return;
   toast.querySelector('.toast-icon-wrap').innerHTML = '<div class="toast-check">✓</div>';
   Object.assign(toast.querySelector('.toast-icon-wrap').style,
     { background:'rgba(46,204,113,0.15)', borderColor:'#2ecc71' });
-  toast.querySelector('.toast-title').textContent = '¡Descarga iniciada!';
-  toast.querySelector('.toast-sub').textContent = filename || 'Archivo listo';
+  toast.querySelector('.toast-title').textContent = '¡Archivo Listo!';
+  toast.querySelector('.toast-sub').textContent = filename || 'Tu canción ya está lista';
   toast.querySelector('.toast-bar-fill').style.width = '100%';
   toast.querySelector('.toast-pct').textContent = '100%';
-  toast.querySelector('.toast-speed').textContent = '';
-  toast.querySelector('.toast-eta').textContent = '';
-  setTimeout(() => { toast.classList.remove('visible'); setTimeout(() => toast.remove(), 400); }, 4000);
+  
+  if (downloadUrl) {
+    toast.querySelector('.toast-footer').innerHTML = `
+      <a href="${downloadUrl}" download="${filename || 'musica.mp3'}" style="background:#2ecc71;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:0.9rem;display:inline-block;margin-top:8px;box-shadow:0 2px 8px rgba(46,204,113,0.4);">📥 GUARDAR EN EL CELULAR</a>
+    `;
+  }
+  setTimeout(() => {
+    if (toast?.isConnected) {
+      toast.classList.remove('visible');
+      setTimeout(() => toast.remove(), 400);
+    }
+  }, 12000);
 }
 
 function toastError(toast, msg) {
@@ -146,11 +158,14 @@ async function browserDownload(urls, fmt, quality, audioQuality, label) {
         updateToast(toast, data);
         if (data.status === 'ready') {
           clearInterval(iv);
-          const a = document.createElement('a');
-          a.href = `${API}/get-file/${token}`;
-          a.download = data.filename || 'descarga';
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
-          toastDone(toast, data.filename);
+          const dlUrl = `${API}/get-file/${token}`;
+          
+          // Trigger browser download via direct window location
+          try {
+            window.location.href = dlUrl;
+          } catch(e) {}
+
+          toastDone(toast, data.filename, dlUrl);
           resolve();
         } else if (data.status === 'error') {
           clearInterval(iv);
