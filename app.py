@@ -7,6 +7,7 @@ import threading
 import zipfile
 import unicodedata
 import urllib.parse
+import re
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 import yt_dlp
