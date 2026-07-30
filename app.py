@@ -544,14 +544,39 @@ def get_info():
     url  = data.get('url', '').strip()
     if not url:
         return jsonify({'error': 'URL requerida'}), 400
+
+    # Auto-convert plain text search queries to ytsearch1:
+    if not url.startswith('http://') and not url.startswith('https://'):
+        url = f"ytsearch1:{url}"
+
     try:
         with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True,
-                                'extract_flat': True, 'skip_download': True}) as ydl:
+                                'extract_flat': True, 'skip_download': True,
+                                'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'mweb']}}}) as ydl:
             info = ydl.extract_info(url, download=False)
+
         if info is None:
             return jsonify({'error': 'No se pudo obtener información'}), 400
+
         if info.get('_type') == 'playlist' or 'entries' in info:
             entries = info.get('entries', [])
+            if not entries:
+                return jsonify({'error': 'No se encontraron resultados'}), 404
+
+            # If plain text search query returned a single result, treat as single video
+            if url.startswith('ytsearch1:') and len(entries) == 1 and entries[0]:
+                e = entries[0]
+                vid_id = e.get('id', '')
+                actual_url = e.get('url') or f"https://www.youtube.com/watch?v={vid_id}"
+                return jsonify({
+                    'type': 'video', 'id': vid_id,
+                    'title': e.get('title', 'Sin título'), 'duration': e.get('duration'),
+                    'thumbnail': e.get('thumbnail') or f"https://i.ytimg.com/vi/{vid_id}/mqdefault.jpg",
+                    'uploader': e.get('uploader') or e.get('channel', ''),
+                    'view_count': e.get('view_count', 0), 'url': actual_url,
+                    'qualities': [1080, 720, 480, 360]
+                })
+
             videos = []
             for e in entries:
                 if e:
@@ -562,19 +587,17 @@ def get_info():
                         'url': e.get('url') or f"https://www.youtube.com/watch?v={vid_id}",
                         'uploader': e.get('uploader', ''),
                     })
-            return jsonify({'type': 'playlist', 'title': info.get('title', 'Playlist'),
+            return jsonify({'type': 'playlist', 'title': info.get('title', 'Resultados'),
                             'uploader': info.get('uploader', ''), 'thumbnail': info.get('thumbnail', ''),
                             'count': len(videos), 'videos': videos})
         else:
-            with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True, 'skip_download': True}) as ydl:
-                full_info = ydl.extract_info(url, download=False)
             return jsonify({'type': 'video', 'id': info.get('id', ''),
                             'title': info.get('title', 'Sin título'), 'duration': info.get('duration'),
                             'thumbnail': info.get('thumbnail', ''), 'uploader': info.get('uploader', ''),
                             'view_count': info.get('view_count', 0), 'url': url,
-                            'qualities': _get_qualities(full_info)})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+                            'qualities': [1080, 720, 480, 360]})
+    except Exception:
+        return jsonify({'error': 'No se pudo obtener información de ese enlace. Verifica la URL o usa la pestaña Buscar Música.'}), 400
 
 
 def _get_qualities(info):
