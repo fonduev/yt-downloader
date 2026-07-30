@@ -942,6 +942,30 @@ def diagnostics():
     })
 
 
+def _start_localtunnel(port_num):
+    """Starts localtunnel in background thread and prints public URL for mobile phones."""
+    import subprocess
+    try:
+        proc = subprocess.Popen(
+            f"npx -y localtunnel --port {port_num}",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        for line in proc.stdout:
+            if "your url is:" in line:
+                url = line.strip().split("your url is:")[-1].strip()
+                print("\n" + "=" * 60)
+                print("  📱 ENLACE PUBLICO PARA EL CELULAR DE TU MAMA:")
+                print(f"  👉 {url}")
+                print("  (Abre este enlace en el celular de tu mamá desde cualquier lugar)")
+                print("=" * 60 + "\n")
+                break
+    except Exception:
+        pass
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     local_ip = "localhost"
@@ -953,6 +977,10 @@ if __name__ == '__main__':
         s.close()
     except Exception:
         pass
+
+    # Start localtunnel background thread if running locally
+    if not os.environ.get('RENDER') and not os.environ.get('RAILWAY_ENVIRONMENT'):
+        threading.Thread(target=_start_localtunnel, args=(port,), daemon=True).start()
 
     print("=" * 60)
     print("  [YT-Downloader Pro] Servidor listo!")
