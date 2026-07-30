@@ -475,61 +475,16 @@ def get_file(token):
         safe_base = 'cancion'
 
     safe_name = f"{safe_base}{ext_raw}"
-    encoded_utf8 = urllib.parse.quote(filename)
 
-    # Force application/octet-stream so mobile Chrome/Safari download directly to disk without media player buffering
-    mimetype = 'application/octet-stream'
-    file_size = os.path.getsize(filepath)
-
-    # HTTP Range handling for Android Chrome / Mobile Safari download resume (206 Partial Content)
-    range_header = request.headers.get('Range', None)
-    byte_start = 0
-    byte_end = file_size - 1
-    status_code = 200
-
-    if range_header and range_header.startswith('bytes='):
-        try:
-            ranges = range_header.replace('bytes=', '').split('-')
-            if ranges[0]:
-                byte_start = int(ranges[0])
-            if len(ranges) > 1 and ranges[1]:
-                byte_end = int(ranges[1])
-            status_code = 206
-        except Exception:
-            byte_start = 0
-            byte_end = file_size - 1
-            status_code = 200
-
-    if byte_start >= file_size:
-        byte_start = 0
-
-    content_length = (byte_end - byte_start) + 1
-
-    def generate_chunks():
-        with open(filepath, 'rb') as f:
-            f.seek(byte_start)
-            remaining = content_length
-            chunk_size = 256 * 1024
-            while remaining > 0:
-                to_read = min(chunk_size, remaining)
-                data = f.read(to_read)
-                if not data:
-                    break
-                remaining -= len(data)
-                yield data
-
-    from flask import Response
-    res = Response(generate_chunks(), status=status_code, mimetype=mimetype)
-    res.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"; filename*=UTF-8\'\'{encoded_utf8}'
-    res.headers['Content-Length'] = str(content_length)
-    res.headers['Accept-Ranges'] = 'bytes'
+    # Use native send_file with conditional=True for robust HTTP Range (206) and octet-stream attachment downloads
+    res = send_file(
+        filepath,
+        as_attachment=True,
+        download_name=safe_name,
+        mimetype='application/octet-stream',
+        conditional=True
+    )
     res.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    res.headers['Pragma'] = 'no-cache'
-    res.headers['Expires'] = '0'
-
-    if status_code == 206:
-        res.headers['Content-Range'] = f'bytes {byte_start}-{byte_end}/{file_size}'
-
     return res
 
 
