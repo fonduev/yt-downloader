@@ -450,7 +450,6 @@ def get_file(token):
     if not os.path.exists(filepath):
         return jsonify({'error': 'Archivo no encontrado'}), 404
 
-    # Sanitize filename for HTTP Content-Disposition headers (mobile browser compatibility)
     safe_name = unicodedata.normalize('NFKD', filename).encode('ascii', 'ignore').decode('ascii')
     if not safe_name or not os.path.splitext(safe_name)[1]:
         ext_raw = os.path.splitext(filename)[1]
@@ -459,12 +458,23 @@ def get_file(token):
     ext = os.path.splitext(filename)[1].lower()
     mime_map = {'.mp3': 'audio/mpeg', '.mp4': 'video/mp4',
                 '.m4a': 'audio/mp4', '.zip': 'application/zip', '.webm': 'audio/webm'}
-
+    mimetype = mime_map.get(ext, 'application/octet-stream')
     file_size = os.path.getsize(filepath)
-    res = send_file(filepath, mimetype=mime_map.get(ext, 'application/octet-stream'),
-                    as_attachment=True, download_name=safe_name, conditional=False)
+
+    def generate_chunks():
+        with open(filepath, 'rb') as f:
+            while True:
+                chunk = f.read(64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+
+    from flask import Response
+    res = Response(generate_chunks(), mimetype=mimetype)
+    res.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
     res.headers['Content-Length'] = str(file_size)
     res.headers['Accept-Ranges'] = 'bytes'
+    res.headers['Cache-Control'] = 'no-cache'
     return res
 
 
