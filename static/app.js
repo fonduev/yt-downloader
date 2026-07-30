@@ -465,15 +465,53 @@ async function doSearch() {
 // ── Regular song/video search ──────────────────────────
 async function doRegularSearch(query) {
   try {
-    const res  = await fetch(`${API}/search`, {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({query, type:state.searchType, limit:20})});
+    const res = await fetch(`${API}/search`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, type: state.searchType, limit: 20 })
+    });
     const data = await res.json();
-    if (!res.ok || data.error) {
-      showError('searchErrorAlert', data.error || 'Error'); $('searchResultsSection').classList.add('hidden'); return;
+    if (res.ok && data.results?.length) {
+      state.searchResults = data.results;
+      renderSongResults(state.searchResults, query);
+      return;
     }
-    state.searchResults = data.results || [];
+  } catch (e) {
+    console.log('Local search endpoint unavailable, using client-side YouTubei fallback...');
+  }
+
+  // Fallback: Client-side YouTubei Search (0 PC / 0 Local Backend required)
+  try {
+    const ytRes = await fetch('https://www.youtube.com/youtubei/v1/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        context: { client: { clientName: "WEB", clientVersion: "2.20231201.00.00" } },
+        query: state.searchType === 'music' ? `${query} audio` : query
+      })
+    });
+    const ytData = await ytRes.json();
+    const contents = ytData.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
+
+    const results = [];
+    for (const item of contents) {
+      const vid = item.videoRenderer;
+      if (vid && vid.videoId) {
+        results.push({
+          id: vid.videoId,
+          title: vid.title?.runs?.[0]?.text || 'Sin título',
+          uploader: vid.ownerText?.runs?.[0]?.text || '',
+          duration: vid.lengthText?.simpleText || '',
+          thumbnail: vid.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${vid.videoId}/mqdefault.jpg`,
+          url: `https://www.youtube.com/watch?v=${vid.videoId}`
+        });
+      }
+    }
+    state.searchResults = results;
     renderSongResults(state.searchResults, query);
-  } catch { showError('searchErrorAlert', 'Error de conexión.'); $('searchResultsSection').classList.add('hidden'); }
+  } catch (err) {
+    showError('searchErrorAlert', 'Error al realizar la búsqueda. Comprueba tu conexión.');
+    $('searchResultsSection').classList.add('hidden');
+  }
 }
 
 function renderSongResults(results, query) {
