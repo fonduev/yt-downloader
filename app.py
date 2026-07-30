@@ -446,18 +446,29 @@ def get_file(token):
         return jsonify({'error': 'Archivo no encontrado'}), 404
 
     def cleanup():
-        time.sleep(60)
+        time.sleep(300)  # Keep temp dir for 5 min so mobile browser retries succeed
         with prepare_lock:
             prepare_jobs.pop(token, None)
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     threading.Thread(target=cleanup, daemon=True).start()
 
+    # Sanitize filename for HTTP Content-Disposition headers (mobile browser compatibility)
+    safe_name = unicodedata.normalize('NFKD', filename).encode('ascii', 'ignore').decode('ascii')
+    if not safe_name or not os.path.splitext(safe_name)[1]:
+        ext_raw = os.path.splitext(filename)[1]
+        safe_name = f"cancion{ext_raw if ext_raw else '.mp3'}"
+
     ext = os.path.splitext(filename)[1].lower()
     mime_map = {'.mp3': 'audio/mpeg', '.mp4': 'video/mp4',
                 '.m4a': 'audio/mp4', '.zip': 'application/zip', '.webm': 'audio/webm'}
-    return send_file(filepath, mimetype=mime_map.get(ext, 'application/octet-stream'),
-                     as_attachment=True, download_name=filename, conditional=False)
+
+    file_size = os.path.getsize(filepath)
+    res = send_file(filepath, mimetype=mime_map.get(ext, 'application/octet-stream'),
+                    as_attachment=True, download_name=safe_name, conditional=False)
+    res.headers['Content-Length'] = str(file_size)
+    res.headers['Accept-Ranges'] = 'bytes'
+    return res
 
 
 # ════════════════════════════════════════════════════════════════
