@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>YT Downloader Pro</title>
   <meta name="description" content="Descarga videos y música de YouTube en MP4 o MP3 con la calidad que elijas." />
+  <meta name="theme-color" content="#0d0f17" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="apple-touch-icon" href="https://i.imgur.com/8Q9Z1qW.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
@@ -25,7 +30,10 @@
         </div>
         <span class="logo-text">YT<span class="logo-accent">Downloader</span></span>
       </div>
-      <div class="header-badge">Pro</div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button id="pwaInstallBtn" class="pwa-install-badge hidden">📲 Instalar App</button>
+        <div class="header-badge">Pro</div>
+      </div>
     </header>
 
     <!-- ── Navigation Tabs ── -->

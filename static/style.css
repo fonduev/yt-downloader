@@ -557,6 +557,26 @@ body {
   display: flex; flex-direction: column;
   position: relative; user-select: none;
 }
+.pwa-install-badge {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pwa-install-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(16,185,129,0.45);
+}
+
 .result-card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 8px 28px rgba(0,0,0,0.4); }
 .result-card.selected { border-color: var(--accent); background: rgba(108,99,255,0.06); }
 .result-card.selected .card-check { opacity: 1; transform: scale(1); }

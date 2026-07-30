@@ -4,6 +4,28 @@
 
 const API = '/api';
 
+// ── PWA Installation & Service Worker ─────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/static/sw.js').catch(err => console.log('SW Error:', err));
+}
+
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const pwaBtn = document.getElementById('pwaInstallBtn');
+  if (pwaBtn) {
+    pwaBtn.classList.remove('hidden');
+    pwaBtn.addEventListener('click', async () => {
+      pwaBtn.classList.add('hidden');
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log('PWA Install outcome:', outcome);
+      deferredPrompt = null;
+    });
+  }
+});
+
 
 // ══════════════════════════════════════════════════════
 //  STATE
