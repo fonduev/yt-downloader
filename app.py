@@ -960,7 +960,7 @@ def _start_tunnel(port_num):
     import subprocess
     # Strategy 1: Try serveo.net via SSH (built-in Windows SSH)
     try:
-        cmd = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -R 80:localhost:{port_num} serveo.net"
+        cmd = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -R 80:127.0.0.1:{port_num} serveo.net"
         proc = subprocess.Popen(
             cmd,
             shell=True,
